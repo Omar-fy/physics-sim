@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PHYSIM — Interactive Physical Systems</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #050810;
+    --panel: #0a0f1e;
+    --border: #1a2540;
+    --accent: #00e5ff;
+    --accent2: #ff3d71;
+    --accent3: #a259ff;
+    --accent4: #39ff14;
+    --text: #c8d8ff;
+    --dim: #4a5a7a;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Rajdhani', sans-serif;
+  }
+
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--sans); }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  #app {
+    display: grid;
+    grid-template-columns: 260px 1fr 260px;
+    grid-template-rows: 56px 1fr 48px;
+    width: 100vw; height: 100vh;
+    position: relative; z-index: 1;
+  }
+
+  /* HEADER */
+  header {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; gap: 20px;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(5,8,16,0.95);
+    backdrop-filter: blur(8px);
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 20px;
+    letter-spacing: 6px;
+    color: var(--accent);
+    text-shadow: 0 0 20px var(--accent);
+  }
+  .logo span { color: var(--accent2); }
+  .subtitle {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: var(--dim);
+    text-transform: uppercase;
+  }
+  .mode-tabs {
+    margin-left: auto;
+    display: flex; gap: 4px;
+  }
+  .mode-tab {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--dim);
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+  .mode-tab:hover { border-color: var(--accent); color: var(--accent); }
+  .mode-tab.active { border-color: var(--accent); color: var(--accent); background: rgba(0,229,255,0.08); box-shadow: 0 0 12px rgba(0,229,255,0.2); }
+
+  /* CANVAS */
+  #canvas-wrap {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+  }
+  canvas {
+    display: block;
+    width: 100%; height: 100%;
+  }
+  .canvas-overlay {
+    position: absolute; top: 16px; left: 16px;
+    font-family: var(--mono); font-size: 10px;
+    color: rgba(0,229,255,0.4);
+    line-height: 1.6;
+    pointer-events: none;
+  }
+
+  /* PANELS */
+  .panel {
+    padding: 0;
+    border-right: 1px solid var(--border);
+    background: rgba(10,15,30,0.97);
+    overflow-y: auto;
+    display: flex; flex-direction: column;
+  }
+  .panel:last-child { border-right: none; border-left: 1px solid var(--border); }
+
+  .panel-section {
+    border-bottom: 1px solid var(--border);
+    padding: 16px;
+  }
+  .panel-title {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--dim);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .panel-title::before {
+    content: '';
+    display: block; width: 16px; height: 1px;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+
+  /* Controls */
+  .ctrl-row {
+    display: flex; align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .ctrl-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--text);
+    text-transform: uppercase;
+  }
+  .ctrl-value {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+    min-width: 40px;
+    text-align: right;
+  }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100%; height: 4px;
+    background: var(--border);
+    outline: none;
+    margin-bottom: 4px;
+    border-radius: 2px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+    cursor: pointer;
+  }
+  .range-accent2::-webkit-slider-thumb { background: var(--accent2); box-shadow: 0 0 8px var(--accent2); }
+  .range-accent3::-webkit-slider-thumb { background: var(--accent3); box-shadow: 0 0 8px var(--accent3); }
+  .range-accent4::-webkit-slider-thumb { background: var(--accent4); box-shadow: 0 0 8px var(--accent4); }
+
+  /* Buttons */
+  .btn-row { display: flex; gap: 8px; margin-top: 4px; }
+  .btn {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    padding: 8px 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--dim);
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,255,0.05); }
+  .btn.danger:hover { border-color: var(--accent2); color: var(--accent2); background: rgba(255,61,113,0.05); }
+  .btn.success:hover { border-color: var(--accent4); color: var(--accent4); background: rgba(57,255,20,0.05); }
+
+  /* Metrics */
+  .metric {
+    display: flex; justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 12px;
+  }
+  .metric-key { color: var(--dim); }
+  .metric-val { font-family: var(--mono); color: var(--accent); }
+  .metric-val.red { color: var(--accent2); }
+  .metric-val.purple { color: var(--accent3); }
+  .metric-val.green { color: var(--accent4); }
+
+  /* API log */
+  .api-log {
+    flex: 1;
+    padding: 12px;
+    font-family: var(--mono);
+    font-size: 10px;
+    overflow-y: auto;
+    color: var(--dim);
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .log-entry {
+    padding: 5px 8px;
+    border-left: 2px solid var(--border);
+    line-height: 1.4;
+    animation: fadeIn 0.3s ease;
+  }
+  .log-entry.out { border-color: var(--accent); color: rgba(0,229,255,0.7); }
+  .log-entry.in  { border-color: var(--accent4); color: rgba(57,255,20,0.7); }
+  .log-entry.err { border-color: var(--accent2); color: rgba(255,61,113,0.7); }
+
+  @keyframes fadeIn { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: translateX(0); } }
+
+  /* Status bar */
+  footer {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; gap: 24px;
+    padding: 0 20px;
+    border-top: 1px solid var(--border);
+    background: rgba(5,8,16,0.98);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dim);
+  }
+  .status-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--accent4);
+    box-shadow: 0 0 8px var(--accent4);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+
+  /* Color pickers */
+  .color-row { display: flex; gap: 6px; margin-top: 4px; }
+  .color-swatch {
+    width: 24px; height: 24px; border-radius: 4px;
+    border: 2px solid transparent;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .color-swatch:hover, .color-swatch.active { border-color: white; transform: scale(1.1); }
+
+  /* Toggle */
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .toggle {
+    position: relative; width: 36px; height: 18px;
+    background: var(--border); border-radius: 9px; cursor: pointer;
+    transition: background 0.2s;
+  }
+  .toggle.on { background: rgba(0,229,255,0.3); box-shadow: 0 0 8px rgba(0,229,255,0.3); }
+  .toggle::after {
+    content: ''; position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    border-radius: 50%; background: var(--dim);
+    transition: all 0.2s;
+  }
+  .toggle.on::after { left: 20px; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div>
+      <div class="logo">PHY<span>SIM</span></div>
+      <div class="subtitle">Interactive Physical Systems v2.4.1</div>
+    </div>
+    <div class="mode-tabs">
+      <button class="mode-tab active" onclick="setMode('particles')">Particles</button>
+      <button class="mode-tab" onclick="setMode('flocking')">Flocking</button>
+      <button class="mode-tab" onclick="setMode('gravity')">Gravity</button>
+    </div>
+  </header>
+
+  <!-- LEFT PANEL: Simulation Controls -->
+  <div class="panel">
+    <div class="panel-section">
+      <div class="panel-title">Simulation Parameters</div>
+
+      <div id="particle-controls">
+        <div class="ctrl-row">
+          <div class="ctrl-label">Count</div>
+          <div class="ctrl-value" id="v-count">300</div>
+        </div>
+        <input type="range" id="s-count" min="10" max="800" value="300" class="range-accent"
+          oninput="document.getElementById('v-count').textContent=this.value; updateSim()">
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Speed</div>
+          <div class="ctrl-value" id="v-speed">2.0</div>
+        </div>
+        <input type="range" id="s-speed" min="1" max="10" step="0.1" value="2.0" class="range-accent"
+          oninput="document.getElementById('v-speed').textContent=parseFloat(this.value).toFixed(1); updateSim()">
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Size</div>
+          <div class="ctrl-value" id="v-size">2.5</div>
+        </div>
+        <input type="range" id="s-size" min="0.5" max="8" step="0.1" value="2.5" class="range-accent2"
+          oninput="document.getElementById('v-size').textContent=parseFloat(this.value).toFixed(1); updateSim()">
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Decay</div>
+          <div class="ctrl-value" id="v-decay">0.96</div>
+        </div>
+        <input type="range" id="s-decay" min="0.7" max="1.0" step="0.01" value="0.96" class="range-accent3"
+          oninput="document.getElementById('v-decay').textContent=parseFloat(this.value).toFixed(2); updateSim()">
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Gravity</div>
+          <div class="ctrl-value" id="v-gravity">0.05</div>
+        </div>
+        <input type="range" id="s-gravity" min="-0.5" max="0.5" step="0.01" value="0.05" class="range-accent4"
+          oninput="document.getElementById('v-gravity').textContent=parseFloat(this.value).toFixed(2); updateSim()">
+      </div>
+
+      <div id="flock-controls" style="display:none">
+        <div class="ctrl-row"><div class="ctrl-label">Boids</div><div class="ctrl-value" id="v-boids">150</div></div>
+        <input type="range" id="s-boids" min="10" max="400" value="150" oninput="document.getElementById('v-boids').textContent=this.value; updateSim()">
+
+        <div class="ctrl-row"><div class="ctrl-label">Cohesion</div><div class="ctrl-value" id="v-coh">0.5</div></div>
+        <input type="range" id="s-coh" min="0" max="2" step="0.05" value="0.5" class="range-accent2"
+          oninput="document.getElementById('v-coh').textContent=parseFloat(this.value).toFixed(2); updateSim()">
+
+        <div class="ctrl-row"><div class="ctrl-label">Separation</div><div class="ctrl-value" id="v-sep">1.5</div></div>
+        <input type="range" id="s-sep" min="0" max="3" step="0.05" value="1.5" class="range-accent3"
+          oninput="document.getElementById('v-sep').textContent=parseFloat(this.value).toFixed(2); updateSim()">
+
+        <div class="ctrl-row"><div class="ctrl-label">Alignment</div><div class="ctrl-value" id="v-ali">1.0</div></div>
+        <input type="range" id="s-ali" min="0" max="2" step="0.05" value="1.0" class="range-accent4"
+          oninput="document.getElementById('v-ali').textContent=parseFloat(this.value).toFixed(2); updateSim()">
+
+        <div class="ctrl-row"><div class="ctrl-label">Perception</div><div class="ctrl-value" id="v-perc">50</div></div>
+        <input type="range" id="s-perc" min="10" max="150" value="50"
+          oninput="document.getElementById('v-perc').textContent=this.value; updateSim()">
+      </div>
+
+      <div id="gravity-controls" style="display:none">
+        <div class="ctrl-row"><div class="ctrl-label">Bodies</div><div class="ctrl-value" id="v-bodies">5</div></div>
+        <input type="range" id="s-bodies" min="2" max="12" value="5"
+          oninput="document.getElementById('v-bodies').textContent=this.value; updateSim()">
+
+        <div class="ctrl-row"><div class="ctrl-label">G Constant</div><div class="ctrl-value" id="v-g">1.0</div></div>
+        <input type="range" id="s-g" min="0.1" max="5" step="0.1" value="1.0" class="range-accent2"
+          oninput="document.getElementById('v-g').textContent=parseFloat(this.value).toFixed(1); updateSim()">
+
+        <div class="ctrl-row"><div class="ctrl-label">Softening</div><div class="ctrl-value" id="v-soft">10</div></div>
+        <input type="range" id="s-soft" min="1" max="50" value="10" class="range-accent3"
+          oninput="document.getElementById('v-soft').textContent=this.value; updateSim()">
+
+        <div class="ctrl-row"><div class="ctrl-label">Trails</div><div class="ctrl-value" id="v-trails">60</div></div>
+        <input type="range" id="s-trails" min="0" max="200" value="60" class="range-accent4"
+          oninput="document.getElementById('v-trails').textContent=this.value; updateSim()">
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">Visual Options</div>
+      <div class="toggle-row">
+        <div class="ctrl-label" style="font-size:11px">Show Trails</div>
+        <div class="toggle on" id="tog-trails" onclick="toggleOpt('trails', this)"></div>
+      </div>
+      <div class="toggle-row">
+        <div class="ctrl-label" style="font-size:11px">Glow FX</div>
+        <div class="toggle on" id="tog-glow" onclick="toggleOpt('glow', this)"></div>
+      </div>
+      <div class="toggle-row">
+        <div class="ctrl-label" style="font-size:11px">Color by Velocity</div>
+        <div class="toggle on" id="tog-velcolor" onclick="toggleOpt('velcolor', this)"></div>
+      </div>
+      <div class="panel-title" style="margin-top:8px">Palette</div>
+      <div class="color-row">
+        <div class="color-swatch active" style="background:#00e5ff" onclick="setPalette(0, this)"></div>
+        <div class="color-swatch" style="background:#ff3d71" onclick="setPalette(1, this)"></div>
+        <div class="color-swatch" style="background:#a259ff" onclick="setPalette(2, this)"></div>
+        <div class="color-swatch" style="background:#39ff14" onclick="setPalette(3, this)"></div>
+        <div class="color-swatch" style="background:#ff9500" onclick="setPalette(4, this)"></div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">Actions</div>
+      <div class="btn-row">
+        <button class="btn success" onclick="resetSim()">Reset</button>
+        <button class="btn" onclick="togglePause()">Pause</button>
+        <button class="btn danger" onclick="clearSim()">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CANVAS -->
+  <div id="canvas-wrap">
+    <canvas id="sim-canvas"></canvas>
+    <div class="canvas-overlay" id="canvas-info">
+      MODE: PARTICLES<br>
+      CLICK: Add emitter<br>
+      DRAG: Attract/Repel
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL: Metrics + API Log -->
+  <div class="panel">
+    <div class="panel-section">
+      <div class="panel-title">Live Metrics</div>
+      <div class="metric"><span class="metric-key">Entities</span><span class="metric-val" id="m-entities">300</span></div>
+      <div class="metric"><span class="metric-key">FPS</span><span class="metric-val green" id="m-fps">60</span></div>
+      <div class="metric"><span class="metric-key">Avg Speed</span><span class="metric-val" id="m-avgspeed">2.1</span></div>
+      <div class="metric"><span class="metric-key">Kinetic E</span><span class="metric-val red" id="m-ke">--</span></div>
+      <div class="metric"><span class="metric-key">Tick #</span><span class="metric-val purple" id="m-tick">0</span></div>
+      <div class="metric"><span class="metric-key">Frame ms</span><span class="metric-val" id="m-framems">--</span></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">API Endpoint</div>
+      <div style="font-family:var(--mono); font-size:9px; color: var(--accent3); line-height:1.8;">
+        POST /api/simulate<br>
+        GET  /api/metrics<br>
+        GET  /api/frame<br>
+        PUT  /api/params<br>
+        POST /api/reset
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">Request Builder</div>
+      <textarea id="api-input" style="width:100%; height:80px; background:rgba(0,0,0,0.4); border:1px solid var(--border); color:var(--accent); font-family:var(--mono); font-size:9px; padding:8px; resize:vertical; outline:none;"
+        placeholder='{"mode":"particles","count":300}'
+      ></textarea>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn success" onclick="sendAPI()">Send</button>
+      </div>
+    </div>
+
+    <div class="panel-section" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+      <div class="panel-title">API Log</div>
+    </div>
+    <div class="api-log" id="api-log"></div>
+  </div>
+
+  <footer>
+    <div class="status-dot"></div>
+    <span id="footer-mode">MODE: PARTICLES</span>
+    <span>|</span>
+    <span id="footer-fps">FPS: 60</span>
+    <span>|</span>
+    <span>REST API: ACTIVE</span>
+    <span>|</span>
+    <span id="footer-tick">TICK: 0</span>
+  </footer>
+</div>
+
+<script>
+// ==================== SIMULATION ENGINE ====================
+const canvas = document.getElementById('sim-canvas');
+const ctx = canvas.getContext('2d');
+
+let mode = 'particles';
+let paused = false;
+let tick = 0;
+let fps = 0, fpsCount = 0, fpsTime = performance.now();
+let frameStart = 0;
+
+const opts = { trails: true, glow: true, velcolor: true };
+const palettes = [
+  ['#00e5ff','#0080ff','#a259ff'],
+  ['#ff3d71','#ff6b35','#ffaa00'],
+  ['#a259ff','#7c3aed','#ec4899'],
+  ['#39ff14','#00ff88','#00e5ff'],
+  ['#ff9500','#ff3d71','#ffdd00']
+];
+let curPalette = 0;
+
+// Resize
+function resize() {
+  const wrap = document.getElementById('canvas-wrap');
+  canvas.width = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+}
+window.addEventListener('resize', () => { resize(); resetSim(); });
+resize();
+
+// ==================== PARTICLES ====================
+let particles = [];
+
+function createParticles(n) {
+  particles = [];
+  for (let i = 0; i < n; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const spd = (0.5 + Math.random()) * parseFloat(document.getElementById('s-speed').value);
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: Math.cos(angle) * spd,
+      vy: Math.sin(angle) * spd,
+      life: 0.5 + Math.random() * 0.5,
+      hue: Math.random() * 360
+    });
+  }
+}
+
+function updateParticles() {
+  const speed = parseFloat(document.getElementById('s-speed').value);
+  const size = parseFloat(document.getElementById('s-size').value);
+  const decay = parseFloat(document.getElementById('s-decay').value);
+  const gravity = parseFloat(document.getElementById('s-gravity').value);
+  const pal = palettes[curPalette];
+
+  // Trail effect
+  if (opts.trails) {
+    ctx.fillStyle = 'rgba(5,8,16,0.18)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  if (opts.glow) { ctx.shadowBlur = 8; }
+
+  let totalSpeed = 0;
+  let totalKE = 0;
+
+  for (let p of particles) {
+    p.vy += gravity;
+    p.vx *= decay;
+    p.vy *= decay;
+
+    // Mouse interaction
+    if (mouseDown) {
+      const dx = mouseX - p.x, dy = mouseY - p.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 120 && dist > 0.1) {
+        const force = (mouseButton === 0 ? 1 : -1) * 0.8 / dist;
+        p.vx += dx * force;
+        p.vy += dy * force;
+      }
+    }
+
+    p.x += p.vx;
+    p.y += p.vy;
+
+    // Bounce
+    if (p.x < 0) { p.x = 0; p.vx *= -0.8; }
+    if (p.x > canvas.width) { p.x = canvas.width; p.vx *= -0.8; }
+    if (p.y < 0) { p.y = 0; p.vy *= -0.8; }
+    if (p.y > canvas.height) { p.y = canvas.height; p.vy *= -0.8; }
+
+    const spd = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+    totalSpeed += spd;
+    totalKE += 0.5 * spd * spd;
+
+    let color;
+    if (opts.velcolor) {
+      const t = Math.min(spd / (speed * 2), 1);
+      const r = Math.round(lerp(0, 255, t));
+      const g = Math.round(lerp(150, 80, t));
+      const b = Math.round(lerp(255, 100, t));
+      color = `rgb(${r},${g},${b})`;
+    } else {
+      color = pal[Math.floor(p.hue / 120) % 3];
+    }
+
+    ctx.shadowColor = color;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.shadowBlur = 0;
+
+  // Update metrics
+  document.getElementById('m-entities').textContent = particles.length;
+  document.getElementById('m-avgspeed').textContent = (totalSpeed / particles.length).toFixed(2);
+  document.getElementById('m-ke').textContent = totalKE.toFixed(0);
+}
+
+// ==================== FLOCKING (Boids) ====================
+let boids = [];
+
+function createBoids(n) {
+  boids = [];
+  for (let i = 0; i < n; i++) {
+    boids.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      vx: (Math.random()-0.5) * 4,
+      vy: (Math.random()-0.5) * 4,
+      ax: 0, ay: 0
+    });
+  }
+}
+
+function updateBoids() {
+  const cohesion = parseFloat(document.getElementById('s-coh').value);
+  const separation = parseFloat(document.getElementById('s-sep').value);
+  const alignment = parseFloat(document.getElementById('s-ali').value);
+  const perception = parseFloat(document.getElementById('s-perc').value);
+  const pal = palettes[curPalette];
+
+  if (opts.trails) {
+    ctx.fillStyle = 'rgba(5,8,16,0.12)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  let totalSpeed = 0;
+
+  for (let b of boids) {
+    let cx=0, cy=0, sx=0, sy=0, ax=0, ay=0, cnt=0, scnt=0;
+    for (let other of boids) {
+      if (other === b) continue;
+      const dx = other.x - b.x, dy = other.y - b.y;
+      const d = Math.sqrt(dx*dx + dy*dy);
+      if (d < perception) {
+        cx += other.x; cy += other.y;
+        ax += other.vx; ay += other.vy;
+        cnt++;
+        if (d < perception * 0.3) {
+          sx -= dx/d; sy -= dy/d; scnt++;
+        }
+      }
+    }
+    b.ax = 0; b.ay = 0;
+    if (cnt > 0) {
+      // Cohesion
+      b.ax += ((cx/cnt - b.x) * 0.001 * cohesion);
+      b.ay += ((cy/cnt - b.y) * 0.001 * cohesion);
+      // Alignment
+      b.ax += (ax/cnt - b.vx) * 0.01 * alignment;
+      b.ay += (ay/cnt - b.vy) * 0.01 * alignment;
+    }
+    // Separation
+    if (scnt > 0) {
+      b.ax += sx * 0.05 * separation;
+      b.ay += sy * 0.05 * separation;
+    }
+    // Mouse
+    if (mouseDown) {
+      const dx = mouseX - b.x, dy = mouseY - b.y;
+      const d = Math.sqrt(dx*dx+dy*dy);
+      if (d < 150 && d > 0.1) {
+        b.ax += dx/d * 0.5;
+        b.ay += dy/d * 0.5;
+      }
+    }
+  }
+
+  for (let b of boids) {
+    b.vx += b.ax; b.vy += b.ay;
+    const spd = Math.sqrt(b.vx*b.vx+b.vy*b.vy);
+    const maxSpd = 4;
+    if (spd > maxSpd) { b.vx = b.vx/spd*maxSpd; b.vy = b.vy/spd*maxSpd; }
+    b.x += b.vx; b.y += b.vy;
+    if (b.x < 0) b.x = canvas.width;
+    if (b.x > canvas.width) b.x = 0;
+    if (b.y < 0) b.y = canvas.height;
+    if (b.y > canvas.height) b.y = 0;
+    totalSpeed += spd;
+
+    // Draw as triangle
+    const angle = Math.atan2(b.vy, b.vx);
+    const sz = 6;
+    const t = Math.min(spd/maxSpd, 1);
+    const color = opts.velcolor ? `hsl(${180+t*120},100%,60%)` : pal[0];
+    ctx.shadowBlur = opts.glow ? 6 : 0;
+    ctx.shadowColor = color;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(b.x + Math.cos(angle)*sz*1.5, b.y + Math.sin(angle)*sz*1.5);
+    ctx.lineTo(b.x + Math.cos(angle+2.4)*sz, b.y + Math.sin(angle+2.4)*sz);
+    ctx.lineTo(b.x + Math.cos(angle-2.4)*sz, b.y + Math.sin(angle-2.4)*sz);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+
+  document.getElementById('m-entities').textContent = boids.length;
+  document.getElementById('m-avgspeed').textContent = (totalSpeed / boids.length).toFixed(2);
+  document.getElementById('m-ke').textContent = (0.5 * totalSpeed * totalSpeed / boids.length).toFixed(0);
+}
+
+// ==================== N-BODY GRAVITY ====================
+let bodies = [];
+const bodyTrails = [];
+
+function createBodies(n) {
+  bodies = [];
+  for (let i = 0; i < n; i++) {
+    const angle = (i / n) * Math.PI * 2;
+    const r = 100 + Math.random() * 150;
+    const cx = canvas.width / 2, cy = canvas.height / 2;
+    const mass = 5 + Math.random() * 30;
+    const orbitSpd = Math.sqrt(100 / (r + 0.1)) * 0.8;
+    bodies.push({
+      x: cx + Math.cos(angle) * r,
+      y: cy + Math.sin(angle) * r,
+      vx: -Math.sin(angle) * orbitSpd,
+      vy:  Math.cos(angle) * orbitSpd,
+      mass: mass,
+      color: palettes[curPalette][i % 3],
+      trail: []
+    });
+  }
+}
+
+function updateGravity() {
+  const G = parseFloat(document.getElementById('s-g').value);
+  const soft = parseFloat(document.getElementById('s-soft').value);
+  const trailLen = parseInt(document.getElementById('s-trails').value);
+  const pal = palettes[curPalette];
+
+  ctx.fillStyle = 'rgba(5,8,16,0.15)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Update forces
+  for (let i = 0; i < bodies.length; i++) {
+    let fx = 0, fy = 0;
+    for (let j = 0; j < bodies.length; j++) {
+      if (i === j) continue;
+      const dx = bodies[j].x - bodies[i].x;
+      const dy = bodies[j].y - bodies[i].y;
+      const dist2 = dx*dx + dy*dy + soft*soft;
+      const dist = Math.sqrt(dist2);
+      const force = G * bodies[i].mass * bodies[j].mass / dist2;
+      fx += force * dx / dist;
+      fy += force * dy / dist;
+    }
+    // Mouse attract
+    if (mouseDown) {
+      const dx = mouseX - bodies[i].x, dy = mouseY - bodies[i].y;
+      const d = Math.sqrt(dx*dx+dy*dy);
+      if (d > 1) { fx += dx/d*2; fy += dy/d*2; }
+    }
+    bodies[i].vx += fx / bodies[i].mass;
+    bodies[i].vy += fy / bodies[i].mass;
+  }
+
+  // Update positions & draw
+  let totalKE = 0;
+  for (let b of bodies) {
+    b.x += b.vx; b.y += b.vy;
+
+    // Soft boundary
+    if (b.x < 0) { b.x = canvas.width; }
+    if (b.x > canvas.width) { b.x = 0; }
+    if (b.y < 0) { b.y = canvas.height; }
+    if (b.y > canvas.height) { b.y = 0; }
+
+    b.trail.push({x:b.x, y:b.y});
+    if (b.trail.length > trailLen) b.trail.shift();
+
+    const spd = Math.sqrt(b.vx*b.vx+b.vy*b.vy);
+    totalKE += 0.5 * b.mass * spd * spd;
+
+    // Draw trail
+    if (opts.trails && b.trail.length > 1) {
+      for (let t = 1; t < b.trail.length; t++) {
+        const alpha = t / b.trail.length;
+        ctx.beginPath();
+        ctx.strokeStyle = b.color.replace(')', `,${alpha * 0.6})`).replace('rgb','rgba').replace('hsl','hsla');
+        ctx.lineWidth = 1;
+        ctx.moveTo(b.trail[t-1].x, b.trail[t-1].y);
+        ctx.lineTo(b.trail[t].x, b.trail[t].y);
+        ctx.stroke();
+      }
+    }
+
+    // Draw body
+    const r = Math.sqrt(b.mass) * 2;
+    ctx.shadowBlur = opts.glow ? 20 : 0;
+    ctx.shadowColor = b.color;
+    ctx.fillStyle = b.color;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  document.getElementById('m-entities').textContent = bodies.length;
+  document.getElementById('m-avgspeed').textContent =
+    (bodies.reduce((a,b)=>a+Math.sqrt(b.vx*b.vx+b.vy*b.vy),0)/bodies.length).toFixed(2);
+  document.getElementById('m-ke').textContent = totalKE.toFixed(0);
+}
+
+// ==================== MAIN LOOP ====================
+function lerp(a,b,t){ return a + (b-a)*t; }
+
+function loop() {
+  if (!paused) {
+    frameStart = performance.now();
+    if (mode === 'particles') updateParticles();
+    else if (mode === 'flocking') updateBoids();
+    else if (mode === 'gravity') updateGravity();
+    tick++;
+
+    const framems = (performance.now() - frameStart).toFixed(1);
+    document.getElementById('m-framems').textContent = framems + 'ms';
+    document.getElementById('m-tick').textContent = tick;
+    document.getElementById('footer-tick').textContent = 'TICK: ' + tick;
+
+    fpsCount++;
+    const now = performance.now();
+    if (now - fpsTime >= 500) {
+      fps = Math.round(fpsCount * 1000 / (now - fpsTime));
+      fpsCount = 0; fpsTime = now;
+      document.getElementById('m-fps').textContent = fps;
+      document.getElementById('footer-fps').textContent = 'FPS: ' + fps;
+    }
+  }
+  requestAnimationFrame(loop);
+}
+
+// ==================== CONTROLS ====================
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('.mode-tab').forEach((t,i) => {
+    t.classList.toggle('active', ['particles','flocking','gravity'][i] === m);
+  });
+  document.getElementById('particle-controls').style.display = m==='particles'?'block':'none';
+  document.getElementById('flock-controls').style.display = m==='flocking'?'block':'none';
+  document.getElementById('gravity-controls').style.display = m==='gravity'?'block':'none';
+  document.getElementById('canvas-info').innerHTML =
+    m==='particles' ? 'MODE: PARTICLES<br>CLICK: Attract<br>RIGHT: Repel' :
+    m==='flocking'  ? 'MODE: FLOCKING<br>CLICK: Lead<br>DRAG: Guide flock' :
+                      'MODE: N-BODY<br>CLICK: Attract<br>DRAG: Pull bodies';
+  document.getElementById('footer-mode').textContent = 'MODE: ' + m.toUpperCase();
+  resetSim();
+  logAPI('out', `PUT /api/params {"mode":"${m}"}`);
+  setTimeout(()=>logAPI('in','200 OK {"status":"mode_changed","mode":"'+m+'"}'),120);
+}
+
+function resetSim() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (mode === 'particles') createParticles(parseInt(document.getElementById('s-count').value));
+  else if (mode === 'flocking') createBoids(parseInt(document.getElementById('s-boids').value));
+  else createBodies(parseInt(document.getElementById('s-bodies').value));
+  logAPI('out','POST /api/reset');
+  setTimeout(()=>logAPI('in','200 OK {"status":"reset_ok"}'),80);
+}
+
+function clearSim() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  particles = []; boids = []; bodies = [];
+}
+
+function togglePause() {
+  paused = !paused;
+  document.querySelector('.btn:nth-of-type(2)') // can't easily target, just log
+  logAPI(paused?'out':'in', paused ? 'POST /api/pause' : 'POST /api/resume');
+}
+
+function updateSim() {
+  if (mode === 'particles') createParticles(parseInt(document.getElementById('s-count').value));
+  else if (mode === 'flocking') createBoids(parseInt(document.getElementById('s-boids').value));
+  else createBodies(parseInt(document.getElementById('s-bodies').value));
+}
+
+function toggleOpt(key, el) {
+  opts[key] = !opts[key];
+  el.classList.toggle('on', opts[key]);
+}
+
+function setPalette(idx, el) {
+  curPalette = idx;
+  document.querySelectorAll('.color-swatch').forEach((s,i) => s.classList.toggle('active', i===idx));
+  if (mode === 'gravity') bodies.forEach((b,i) => b.color = palettes[curPalette][i % 3]);
+}
+
+// API log
+function logAPI(type, msg) {
+  const log = document.getElementById('api-log');
+  const t = new Date().toTimeString().substr(0,8);
+  const el = document.createElement('div');
+  el.className = 'log-entry ' + type;
+  el.textContent = `[${t}] ${msg}`;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+  if (log.children.length > 50) log.removeChild(log.firstChild);
+}
+
+function sendAPI() {
+  const input = document.getElementById('api-input').value.trim();
+  if (!input) return;
+  try {
+    const parsed = JSON.parse(input);
+    logAPI('out', `POST /api/simulate ${input}`);
+    // Apply params
+    if (parsed.mode) setMode(parsed.mode);
+    if (parsed.count && mode==='particles') {
+      document.getElementById('s-count').value = parsed.count;
+      document.getElementById('v-count').textContent = parsed.count;
+    }
+    setTimeout(()=>{
+      const metrics = {fps, tick, entities: (mode==='particles'?particles.length:mode==='flocking'?boids.length:bodies.length)};
+      logAPI('in', `200 OK ${JSON.stringify(metrics)}`);
+    }, 100);
+  } catch(e) {
+    logAPI('err', `400 Bad Request: Invalid JSON`);
+  }
+}
+
+// Mouse
+let mouseX=0, mouseY=0, mouseDown=false, mouseButton=0;
+canvas.addEventListener('mousemove', e => {
+  const r = canvas.getBoundingClientRect();
+  mouseX = (e.clientX - r.left) * (canvas.width / r.width);
+  mouseY = (e.clientY - r.top) * (canvas.height / r.height);
+});
+canvas.addEventListener('mousedown', e => {
+  mouseDown = true; mouseButton = e.button;
+  if (e.button === 0 && mode === 'particles') {
+    const spd = parseFloat(document.getElementById('s-speed').value);
+    for (let i=0; i<20; i++) {
+      const a = Math.random()*Math.PI*2;
+      const s = (0.5+Math.random())*spd;
+      particles.push({x:mouseX,y:mouseY,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,hue:Math.random()*360});
+    }
+  }
+});
+canvas.addEventListener('mouseup', () => mouseDown = false);
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// Init
+logAPI('out', 'GET /api/status');
+logAPI('in', '200 OK {"server":"PHYSIM v2.4.1","status":"ready","modes":["particles","flocking","gravity"]}');
+createParticles(300);
+loop();
+</script>
+</body>
+</html>

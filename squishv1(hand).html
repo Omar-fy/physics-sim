@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SQUISH</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<script src="https://unpkg.com/ml5@1/dist/ml5.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body {
+    width:100%; height:100%;
+    background:#000;
+    display:flex; align-items:center; justify-content:center;
+    overflow:hidden;
+  }
+  /* Scale canvas to fill window while keeping 4:3 */
+  canvas {
+    display:block;
+    max-width:100vw;
+    max-height:100vh;
+    width:auto !important;
+    height:auto !important;
+    aspect-ratio: 640 / 480;
+    image-rendering: pixelated;
+  }
+</style>
+</head>
+<body>
+<script>
+// ─────────────────────────────────────────────────────────────
+//  SQUISH  —  ml5 v1 HandPose particle stress-ball
+//  Canvas is fixed 640×480 so keypoints map 1:1 with no transform
+//  Up to 2 hands.  3 gestures: FIST / OPEN / SPREAD
+// ─────────────────────────────────────────────────────────────
+
+const W = 640, H = 480;
+
+let handPose, video;
+let hands = [];         // raw ml5 results
+
+// Particles
+const N = 350;
+let pts = [];
+
+// Hand state (2 slots)
+let hs = [newHand(), newHand()];
+
+// Score
+let score = 0, best = 0;
+
+// Loading flag
+let ready = false;
+
+function newHand() {
+  return {
+    on: false,
+    kp: [],                      // 21 smoothed {x,y}
+    px: 0, py: 0,                // palm centre
+    ppx: 0, ppy: 0,              // previous palm
+    vx: 0, vy: 0,                // palm velocity
+    spd: 0,
+    g: 'open',                   // gesture
+    pg: 'open',                  // previous gesture
+    held: 0,
+    flickCd: 0
+  };
+}
+
+// ── ml5 MUST be in preload ────────────────────────────────────
+function preload() {
+  // flipped:true mirrors coordinates so left hand = left side
+  handPose = ml5.handPose({ flipped: true, maxHands: 2 });
+}
+
+function setup() {
+  createCanvas(W, H);
+
+  // Video at exact canvas size — keypoints come back in these pixel units
+  video = createCapture(VIDEO);
+  video.size(W, H);
+  video.hide();
+
+  // Start continuous detection; results land in hands[]
+  handPose.detectStart(video, function(r) {
+    hands = r;
+    ready = true;
+  });
+
+  // Spawn particles
+  for (let i = 0; i < N; i++) {
+    pts.push({
+      x:  random(W),
+      y:  random(H),
+      vx: random(-1.5, 1.5),
+      vy: random(-1.5, 1.5),
+      r:  random(3, 6)
+    });
+  }
+
+  textFont('monospace');
+  noSmooth();
+}
+
+// ── GESTURE CLASSIFIER ────────────────────────────────────────
+// kp = 21 smoothed keypoints, spd = palm speed px/frame
+function gesture(kp, spd) {
+  if (!kp || kp.length < 21) return 'open';
+  if (spd > 18) return 'flick';
+
+  // Is fingertip above its PIP joint? (screen-y: smaller = higher)
+  const up  = (tip, pip) => kp[tip].y < kp[pip].y - 8;
+  // Is fingertip at/below its MCP joint? (curled)
+  const dn  = (tip, mcp) => kp[tip].y >= kp[mcp].y - 10;
+
+  const iUp = up(8,6),  mUp = up(12,10), rUp = up(16,14), pUp = up(20,18);
+  const iDn = dn(8,5),  mDn = dn(12,9),  rDn = dn(16,13), pDn = dn(20,17);
+
+  if (iDn && mDn && rDn && pDn)    return 'fist';
+
+  if (iUp && mUp && rUp && pUp) {
+    const spread = abs(kp[8].x - kp[20].x);
+    return spread > 60 ? 'spread' : 'open';
+  }
+
+  return 'open';
+}
+
+// ── UPDATE HAND STATES ────────────────────────────────────────
+const SM = 0.4;  // lerp smoothing
+
+function updateHands() {
+  for (const h of hs) { h.on = false; h.held = 0; }
+
+  for (let i = 0; i < min(hands.length, 2); i++) {
+    const raw = hands[i];
+    if (!raw || !raw.keypoints || raw.keypoints.length < 21) continue;
+
+    const h = hs[i];
+    h.ppx = h.px; h.ppy = h.py;
+    h.on = true;
+
+    // Smooth keypoints (coordinates already in 640×480 px space)
+    if (h.kp.length < 21) {
+      h.kp = raw.keypoints.map(k => ({ x: k.x, y: k.y }));
+    } else {
+      for (let k = 0; k < 21; k++) {
+        h.kp[k].x = lerp(h.kp[k].x, raw.keypoints[k].x, SM);
+        h.kp[k].y = lerp(h.kp[k].y, raw.keypoints[k].y, SM);
+      }
+    }
+
+    // Palm = mean of wrist (0) + index MCP (5) + middle MCP (9) + ring MCP (13) + pinky MCP (17)
+    h.px = (h.kp[0].x + h.kp[5].x + h.kp[9].x + h.kp[13].x + h.kp[17].x) / 5;
+    h.py = (h.kp[0].y + h.kp[5].y + h.kp[9].y + h.kp[13].y + h.kp[17].y) / 5;
+    h.vx = h.px - h.ppx;
+    h.vy = h.py - h.ppy;
+    h.spd = sqrt(h.vx * h.vx + h.vy * h.vy);
+
+    h.pg = h.g;
+    h.g  = gesture(h.kp, h.spd);
+    if (h.g === 'flick' && h.pg !== 'flick') h.flickCd = 18;
+    if (h.flickCd > 0) h.flickCd--;
+  }
+}
+
+// ── APPLY FORCES ─────────────────────────────────────────────
+const R = 110;   // palm influence radius (in canvas pixels)
+
+function applyForces() {
+  for (const h of hs) {
+    if (!h.on) continue;
+    let held = 0;
+
+    for (const p of pts) {
+      const dx = h.px - p.x, dy = h.py - p.y;
+      const d  = sqrt(dx*dx + dy*dy);
+      if (d > R * 2.2 || d < 0.5) continue;
+      const n = d / R;  // 0 = centre, 1 = edge
+
+      if (h.g === 'fist') {
+        // Squeeze — strong inward pull, dampened velocity
+        const f = 3.5 / (n*n + 0.3);
+        p.vx += (dx/d) * f * 0.10;
+        p.vy += (dy/d) * f * 0.10;
+        p.vx *= 0.88; p.vy *= 0.88;
+        if (d < R * 0.5) held++;
+
+      } else if (h.g === 'open') {
+        // Gentle hold — soft gravity toward palm
+        if (d < R) {
+          p.vx += (dx/d) * 0.8 * (1-n) * 0.07;
+          p.vy += (dy/d) * 0.8 * (1-n) * 0.07;
+          p.vx *= 0.94; p.vy *= 0.94;
+          held++;
+        }
+
+      } else if (h.g === 'spread') {
+        // Explode outward
+        const f = 7 * max(0, 1-n);
+        p.vx -= (dx/d) * f * 0.18;
+        p.vy -= (dy/d) * f * 0.18;
+
+      } else if (h.g === 'flick' && h.flickCd > 0) {
+        // Shockwave — transfer palm velocity
+        if (d < R * 1.6) {
+          p.vx += h.vx * 0.20;
+          p.vy += h.vy * 0.20;
+        }
+      }
+    }
+    h.held = held;
+  }
+}
+
+// ── STEP PARTICLES ────────────────────────────────────────────
+function stepPts() {
+  for (const p of pts) {
+    p.vy += 0.02;
+    p.vx *= 0.993; p.vy *= 0.993;
+    p.x += p.vx;   p.y += p.vy;
+    if (p.x < p.r)     { p.x = p.r;     p.vx *= -0.7; }
+    if (p.x > W - p.r) { p.x = W - p.r; p.vx *= -0.7; }
+    if (p.y < p.r)     { p.y = p.r;     p.vy *= -0.7; }
+    if (p.y > H - p.r) { p.y = H - p.r; p.vy *= -0.7; }
+  }
+}
+
+// ── DRAW PARTICLES ────────────────────────────────────────────
+function drawPts() {
+  noStroke();
+  for (const p of pts) {
+    const v = sqrt(p.vx*p.vx + p.vy*p.vy);
+    const b = int(map(v, 0, 10, 140, 255));
+    fill(b);
+    circle(p.x, p.y, p.r * 2);
+  }
+}
+
+// ── DRAW HAND SKELETON ────────────────────────────────────────
+const BONES = [
+  [0,1],[1,2],[2,3],[3,4],
+  [0,5],[5,6],[6,7],[7,8],
+  [0,9],[9,10],[10,11],[11,12],
+  [0,13],[13,14],[14,15],[15,16],
+  [0,17],[17,18],[18,19],[19,20]
+];
+
+function drawHand(h, col) {
+  if (!h.on || h.kp.length < 21) return;
+
+  const sq = h.g === 'fist';
+  const sp = h.g === 'spread';
+
+  // Influence circle
+  stroke(col); noFill();
+  strokeWeight(sq ? 2.5 : 1);
+  drawingContext.setLineDash(sq ? [] : [4, 7]);
+  circle(h.px, h.py, R * 2);
+  drawingContext.setLineDash([]);
+
+  // Fill tint when squeezing
+  if (sq) {
+    fill(col + '18'); noStroke();
+    circle(h.px, h.py, R * 2);
+  }
+  // Extra rings when spreading
+  if (sp) {
+    noFill(); stroke(col); strokeWeight(1);
+    circle(h.px, h.py, R * 3);
+    strokeWeight(0.5);
+    circle(h.px, h.py, R * 4.2);
+  }
+
+  // Skeleton bones
+  stroke(col); strokeWeight(sq ? 2 : 1.3); noFill();
+  for (const [a,b] of BONES) line(h.kp[a].x, h.kp[a].y, h.kp[b].x, h.kp[b].y);
+
+  // Joints
+  noStroke(); fill(col);
+  for (let k = 0; k < 21; k++) {
+    const tip = [4,8,12,16,20].includes(k);
+    circle(h.kp[k].x, h.kp[k].y, tip ? (sq ? 12 : 8) : 5);
+  }
+
+  // Label
+  noStroke(); fill(col);
+  textSize(10); textAlign(CENTER);
+  text(h.g.toUpperCase(), h.kp[0].x, h.kp[0].y - 14);
+}
+
+// ── UI ────────────────────────────────────────────────────────
+function drawUI() {
+  // Score box — top left
+  noStroke(); fill(0);     rect(0, 0, 168, 62);
+  stroke(255); strokeWeight(2); noFill(); rect(0, 0, 168, 62);
+  noStroke(); fill(255); textAlign(LEFT);
+  textSize(10); text('HELD', 10, 18);
+  textSize(38); text(score, 10, 56);
+
+  // Best — small below
+  noStroke(); fill(100); textSize(9); text('BEST: ' + best, 10, 74);
+
+  // Hand badges — top right
+  const labels = ['H1','H2'];
+  const cols   = ['#ffffff','#aaaaaa'];
+  for (let i = 0; i < 2; i++) {
+    const h = hs[i];
+    const bx = W - 130 + i * 65;
+    noStroke(); fill(0); rect(bx, 0, 62, 48);
+    stroke(h.on ? 255 : 40); strokeWeight(h.on ? 2 : 1);
+    noFill(); rect(bx, 0, 62, 48);
+    noStroke(); fill(h.on ? 255 : 50);
+    textSize(9); textAlign(CENTER);
+    text(labels[i], bx + 31, 14);
+    textSize(9);
+    text(h.on ? h.g.toUpperCase() : '--', bx + 31, 28);
+    text(h.on ? h.held + 'p' : '', bx + 31, 42);
+  }
+
+  // Legend — bottom left, tiny
+  noStroke(); fill(0);     rect(0, H - 66, 188, 66);
+  stroke(255); strokeWeight(1); noFill(); rect(0, H - 66, 188, 66);
+  noStroke(); fill(200); textSize(8); textAlign(LEFT);
+  text('FIST   squeeze & attract',   8, H - 52);
+  text('OPEN   gentle hold + orbit', 8, H - 40);
+  text('SPREAD explode outward',      8, H - 28);
+  text('FLICK  swipe shockwave',      8, H - 16);
+
+  // Loading status
+  if (!ready) {
+    fill(0, 200); noStroke(); rect(0, 0, W, H);
+    fill(255); textSize(14); textAlign(CENTER);
+    text('loading handpose model...', W/2, H/2);
+    textSize(10); fill(150);
+    text('allow camera access if prompted', W/2, H/2 + 22);
+  }
+}
+
+// ── DRAW LOOP ─────────────────────────────────────────────────
+function draw() {
+  background(0);
+
+  updateHands();
+  applyForces();
+  stepPts();
+  drawPts();
+
+  // Skeletons
+  drawHand(hs[0], '#ffffff');
+  drawHand(hs[1], '#aaaaaa');
+
+  score = hs[0].held + hs[1].held;
+  best  = max(best, score);
+
+  drawUI();
+}
+
+function windowResized() {
+  // Canvas stays 640×480; CSS handles scaling
+}
+</script>
+</body>
+</html>
